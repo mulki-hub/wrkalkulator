@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tebak Gambar - Mabar Pro</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap');
+
+        :root {
+            --primary: #4F46E5; --primary-hover: #4338CA;
+            --secondary: #10B981; --danger: #EF4444;
+            --bg-color: #F3F4F6; --card-bg: #FFFFFF;
+            --text-main: #1F2937; --text-light: #6B7280;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif; background-color: var(--bg-color); color: var(--text-main);
+            display: flex; justify-content: center; align-items: center; min-height: 100vh;
+            margin: 0; padding: 20px; box-sizing: border-box;
+        }
+
+        .container {
+            background-color: var(--card-bg); border-radius: 20px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            padding: 25px; width: 100%; max-width: 450px; text-align: center; overflow: hidden; position: relative;
+        }
+
+        h1 { color: var(--primary); font-weight: 800; margin: 0 0 20px 0; font-size: 26px;}
+        
+        .screen { display: none; }
+        .screen.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        input, select {
+            width: 100%; padding: 12px; margin-bottom: 15px; border: 2px solid #E5E7EB;
+            border-radius: 10px; font-family: inherit; font-size: 15px; box-sizing: border-box; text-align: center;
+        }
+        input:focus, select:focus { outline: none; border-color: var(--primary); }
+
+        button {
+            width: 100%; padding: 12px; background-color: var(--primary); color: white;
+            border: none; border-radius: 10px; font-weight: 600; font-size: 16px;
+            cursor: pointer; transition: 0.2s; margin-bottom: 10px; font-family: inherit;
+        }
+        button:hover { background-color: var(--primary-hover); }
+        button:active { transform: scale(0.98); }
+        button.btn-green { background-color: var(--secondary); }
+        button.btn-green:hover { background-color: #059669; }
+        button.btn-gray { background-color: #9CA3AF; }
+        button.btn-gray:hover { background-color: #6B7280; }
+        button.btn-danger { background-color: var(--danger); }
+
+        /* Custom Modal (Pop-up) */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-box {
+            background: #fff; padding: 20px; border-radius: 15px; width: 85%; max-width: 350px;
+            text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .modal-title { font-weight: bold; margin-bottom: 10px; color: var(--text-main); font-size: 18px; }
+        .modal-content { margin-bottom: 20px; color: var(--text-light); font-size: 14px; }
+        .modal-actions { display: flex; gap: 10px; justify-content: center; }
+        .modal-actions button { margin: 0; padding: 10px; font-size: 14px; }
+
+        /* Profiling */
+        .avatar-selection { display: flex; justify-content: center; gap: 10px; margin-bottom: 15px; }
+        .avatar-opt { width: 50px; height: 50px; border-radius: 50%; border: 3px solid transparent; cursor: pointer; transition: 0.2s; opacity: 0.5;}
+        .avatar-opt.selected { border-color: var(--primary); opacity: 1; transform: scale(1.1); }
+        .avatar-opt img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover;}
+
+        /* Room List */
+        .room-list { max-height: 200px; overflow-y: auto; text-align: left; margin-bottom: 15px; }
+        .room-item {
+            background: #F9FAFB; border: 1px solid #E5E7EB; padding: 10px; border-radius: 10px;
+            margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .room-item .room-name { font-weight: 600; font-size: 14px;}
+        .room-item button { width: auto; margin: 0; padding: 6px 12px; font-size: 12px; }
+
+        /* Game Header (Scoreboard) */
+        .score-board { display: flex; justify-content: space-between; background: #EEF2FF; padding: 10px; border-radius: 10px; margin-bottom: 15px; font-size: 12px; border: 1px solid #C7D2FE;}
+        .player-info { display: flex; align-items: center; gap: 8px; flex-direction: column; }
+        .player-info img { width: 35px; height: 35px; border-radius: 50%; border: 2px solid var(--primary);}
+        .player-info span { font-weight: bold; color: var(--primary); }
+        .round-info { text-align: center; font-weight: 800; color: var(--danger); display: flex; flex-direction: column; justify-content: center; font-size: 16px;}
+
+        /* Canvas & Game */
+        .role-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 10px;}
+        .role-drawer { background-color: #FEE2E2; color: #B91C1C; }
+        .role-guesser { background-color: #D1FAE5; color: #047857; }
+        #word-display { font-size: 18px; font-weight: 800; color: var(--secondary); margin-bottom: 10px; letter-spacing: 1px;}
+        
+        canvas { background: #fff; border: 2px solid #E5E7EB; border-radius: 12px; cursor: crosshair; touch-action: none; width: 100%; aspect-ratio: 4/5; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        
+        .chat-box { background: #F9FAFB; padding: 10px; border-radius: 10px; height: 100px; overflow-y: auto; text-align: left; font-size: 14px; margin-bottom: 10px; border: 1px solid #E5E7EB;}
+        .chat-msg { border-bottom: 1px solid #eee; padding: 5px 0; }
+        .chat-msg img { width: 20px; height: 20px; border-radius: 50%; vertical-align: middle; margin-right: 5px; }
+        .sys-msg { color: var(--primary); font-style: italic; font-weight: bold; text-align: center; }
+
+        #input-guess-area { display: flex; gap: 10px; }
+        #input-guess-area input { margin-bottom: 0; text-align: left; }
+        #input-guess-area button { width: auto; margin-bottom: 0; padding: 0 20px;}
+    </style>
+</head>
+<body>
+
+<!-- CUSTOM MODAL COMPONENT -->
+<div id="customModal" class="modal-overlay">
+    <div class="modal-box">
+        <div id="modalTitle" class="modal-title">Perhatian</div>
+        <div id="modalContent" class="modal-content">Pesan di sini</div>
+        <!-- Area Input Khusus (Misal: Password) -->
+        <input type="tel" id="modalInput" style="display:none; margin-bottom:15px;" placeholder="Masukkan sandi..." pattern="[0-9]*">
+        
+        <div class="modal-actions" id="modalActions">
+            <!-- Tombol digenerate dari JS -->
+        </div>
+    </div>
+</div>
+
+<div class="container">
+    <h1><i class="fa-solid fa-palette"></i> Tebak Gambar</h1>
+
+    <!-- 0. SCREEN PROFILING -->
+    <div id="screen-profile" class="screen active">
+        <p style="font-size: 14px; color: var(--text-light); margin-bottom: 10px;">Siapkan profilmu sebelum mabar!</p>
+        
+        <div class="avatar-selection" id="avatarSelection">
+            <div class="avatar-opt selected" onclick="selectAvatar(this, 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Felix')">
+                <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Felix" alt="Ava1">
+            </div>
+            <div class="avatar-opt" onclick="selectAvatar(this, 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Aneka')">
+                <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Aneka" alt="Ava2">
+            </div>
+            <div class="avatar-opt" onclick="selectAvatar(this, 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Jude')">
+                <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Jude" alt="Ava3">
+            </div>
+            <div class="avatar-opt" onclick="selectAvatar(this, 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Mimi')">
+                <img src="https://api.dicebear.com/7.x/pixel-art/svg?seed=Mimi" alt="Ava4">
+            </div>
+        </div>
+
+        <input type="text" id="usernameInput" placeholder="Masukkan Nama Kamu..." maxlength="12">
+        <button onclick="saveProfile()"><i class="fa-solid fa-arrow-right"></i> Lanjut</button>
+    </div>
+
+    <!-- 1. SCREEN HOST / JOIN -->
+    <div id="screen-host-join" class="screen">
+        <div style="margin-bottom: 20px; font-weight:bold; color:var(--primary);">
+            Halo, <span id="displayMyName">Kamu</span>!
+        </div>
+        <button onclick="showScreen('screen-create-room')"><i class="fa-solid fa-plus"></i> Host (Buat Room)</button>
+        <button class="btn-green" onclick="loadRooms(); showScreen('screen-room-list')"><i class="fa-solid fa-list"></i> Join (Cari Room)</button>
+        <button class="btn-gray" onclick="showScreen('screen-profile')"><i class="fa-solid fa-user-edit"></i> Ganti Profil</button>
+    </div>
+
+    <!-- 2. SCREEN CREATE ROOM (HOST) -->
+    <div id="screen-create-room" class="screen">
+        <h3 style="margin-top:0">Buat Room Baru</h3>
+        <input type="text" id="hostRoomName" placeholder="Nama Room (Misal: Kamar Mabar)" maxlength="15">
+        <input type="tel" id="hostRoomPass" placeholder="Password (Hanya Angka)" pattern="[0-9]*" oninput="this.value = this.value.replace(/[^0-9]/g, '')" maxlength="6">
+        <button class="btn-green" onclick="createRoom()">Buat Lobby</button>
+        <button class="btn-gray" onclick="showScreen('screen-host-join')">Batal</button>
+    </div>
+
+    <!-- 3. SCREEN ROOM LIST (JOIN) -->
+    <div id="screen-room-list" class="screen">
+        <h3 style="margin-top:0">Daftar Room Aktif</h3>
+        <div class="room-list" id="roomListDiv"></div>
+        <button class="btn-gray" onclick="showScreen('screen-host-join')">Kembali</button>
+    </div>
+
+    <!-- 4. SCREEN LOBBY (WAITING ROOM) -->
+    <div id="screen-lobby" class="screen">
+        <h3 id="lobbyRoomName" style="margin-top:0">Room: -</h3>
+        <div style="background-color: #EEF2FF; padding: 12px; border-radius: 12px; margin-bottom: 15px;" id="lobbyStatus">
+            <i class="fa-solid fa-spinner fa-spin"></i> Menunggu pemain lain...
+        </div>
+
+        <div id="difficultySelector" style="display:none; text-align:left; margin-bottom:15px; background: #F9FAFB; padding:10px; border-radius:10px; border:1px solid #E5E7EB;">
+            <label style="font-weight:600; font-size:14px;"><i class="fa-solid fa-gauge"></i> Tingkat Kesulitan:</label>
+            <select id="roomDifficulty" onchange="syncDifficulty(this.value)" style="margin-top:8px; margin-bottom:0;">
+                <option value="easy">Easy (Benda Sehari-hari)</option>
+                <option value="normal">Normal (Benda Agak Detail)</option>
+                <option value="hard">Hard (Sangat Sulit)</option>
+            </select>
+        </div>
+        <div id="difficultyDisplay" style="display:none; margin-bottom:15px; font-weight:bold; color:var(--primary); background: #F9FAFB; padding:10px; border-radius:10px; border:1px solid #E5E7EB;">
+            <i class="fa-solid fa-gauge"></i> Kesulitan: <span id="displayDiffVal" style="color:var(--danger)">EASY</span>
+        </div>
+
+        <button id="btnStartGame" class="btn-green" style="display: none;" onclick="startGame()">Mulai Game!</button>
+        <button class="btn-gray" onclick="leaveRoomConfirm()">Keluar Lobby</button>
+    </div>
+
+    <!-- 5. SCREEN GAME -->
+    <div id="screen-game" class="screen">
+        
+        <!-- SCOREBOARD -->
+        <div class="score-board">
+            <div class="player-info">
+                <img src="" id="sb-p1-img" alt="P1">
+                <span id="sb-p1-name">P1</span>
+                <span style="color:var(--text-main)" id="sb-p1-score">0 Pts</span>
+            </div>
+            
+            <div class="round-info">
+                <div style="font-size: 12px; color: var(--text-light)">RONDE</div>
+                <div id="sb-round">1 / 5</div>
+            </div>
+
+            <div class="player-info">
+                <img src="" id="sb-p2-img" alt="P2">
+                <span id="sb-p2-name">P2</span>
+                <span style="color:var(--text-main)" id="sb-p2-score">0 Pts</span>
+            </div>
+        </div>
+
+        <!-- PERAN & KATA -->
+        <div style="text-align: center;">
+            <span id="role-badge" class="role-badge">Peran</span>
+            <div id="word-display" style="display: none;"></div>
+        </div>
+        
+        <!-- KANVAS -->
+        <div style="position: relative;">
+            <canvas id="gameCanvas" width="400" height="500"></canvas>
+            <button id="btnClear" onclick="clearCanvas()" style="position: absolute; top:5px; right:5px; width:auto; padding:5px 10px; background:rgba(255,255,255,0.9); color:red; border:1px solid #ccc; font-size:12px; display:none;"><i class="fa-solid fa-trash"></i> Hapus</button>
+        </div>
+        
+        <!-- CHAT -->
+        <div class="chat-box" id="chatBox"></div>
+        
+        <div id="input-guess-area">
+            <input type="text" id="guessInput" placeholder="Ketik tebakanmu..." onkeypress="if(event.key==='Enter') kirimTebakan()">
+            <button onclick="kirimTebakan()"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+        <button class="btn-danger" onclick="leaveRoomConfirm()" style="margin-top: 10px; font-size: 14px;"><i class="fa-solid fa-door-open"></i> Menyerah & Keluar</button>
+    </div>
+</div>
+
+<script>
+    // KONFIGURASI FIREBASE
+    const firebaseConfig = {
+        apiKey: "AIzaSyBBNc_H9SA7WrIagS8f-5uHggeU7ODia7Q",
+        authDomain: "qrtes12.firebaseapp.com",
+        databaseURL: "https://qrtes12-default-rtdb.asia-southeast1.firebasedatabase.app/",
+        projectId: "qrtes12",
+        storageBucket: "qrtes12.firebasestorage.app",
+        messagingSenderId: "993597353524",
+        appId: "1:993597353524:web:151391426bf44c22aee461"
+    };
+    if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    // VARIABEL GLOBAL
+    let myUser = { name: '', avatar: 'https://api.dicebear.com/7.x/pixel-art/svg?seed=Felix' };
+    let myPlayerId = ''; // 'player1' (host) / 'player2' (joiner)
+    let currentRoomId = '';
+    let myRole = ''; // 'drawer' / 'guesser'
+    let isDrawing = false;
+    let gameActive = false;
+    let roomListener = null;
+
+    const maxRounds = 5;
+
+    const daftarKata = {
+        easy: ["kucing", "gunung", "rumah", "pohon", "bintang", "buku", "kacamata", "mobil", "ikan", "apel", "sepeda", "payung", "bola", "matahari", "awan", "kursi", "meja", "pintu", "bunga", "pensil"],
+        normal: ["kamera", "laptop", "sepatu", "jam tangan", "kura kura", "jembatan", "gitar", "kado", "mahkota", "gunting", "sikat gigi", "lemari", "boneka", "lampu", "pesawat", "kereta api", "kulkas", "kompor", "gajah", "helikopter"],
+        hard: ["dinosaurus", "roller coaster", "mikroskop", "satelit", "naga", "alien", "kapal selam", "kastil", "kalajengking", "gurita", "mesin cuci", "blender", "treadmill", "patung liberty", "menara eiffel", "kincir angin", "traktor", "kanguru", "bunglon", "candi"]
+    };
+
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.strokeStyle = '#1F2937';
+
+    // 0. CUSTOM MODAL LOGIC (Menggantikan Alert & Prompt)
+    function showModal(title, content, type = 'alert', onSubmit = null) {
+        document.getElementById('modalTitle').innerText = title;
+        document.getElementById('modalContent').innerHTML = content;
+        
+        const input = document.getElementById('modalInput');
+        const actions = document.getElementById('modalActions');
+        actions.innerHTML = '';
+        input.style.display = 'none';
+        input.value = '';
+
+        if (type === 'alert') {
+            actions.innerHTML = `<button class="btn-green" onclick="closeModal()">Oke</button>`;
+        } else if (type === 'prompt') {
+            input.style.display = 'block';
+            actions.innerHTML = `
+                <button class="btn-gray" onclick="closeModal()">Batal</button>
+                <button class="btn-green" onclick="${onSubmit}()">Submit</button>
+            `;
+        } else if (type === 'confirm') {
+            actions.innerHTML = `
+                <button class="btn-gray" onclick="closeModal()">Batal</button>
+                <button class="btn-danger" onclick="${onSubmit}(); closeModal()">Ya, Keluar</button>
+            `;
+        }
+        document.getElementById('customModal').style.display = 'flex';
+    }
+
+    function closeModal() { document.getElementById('customModal').style.display = 'none'; }
+
+    // 1. PROFILING SYSTEM
+    function showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+    }
+
+    function selectAvatar(element, url) {
+        document.querySelectorAll('.avatar-opt').forEach(el => el.classList.remove('selected'));
+        element.classList.add('selected');
+        myUser.avatar = url;
+    }
+
+    function saveProfile() {
+        const name = document.getElementById('usernameInput').value.trim();
+        if(!name) return showModal('Ups!', 'Nama tidak boleh kosong.', 'alert');
+        myUser.name = name;
+        document.getElementById('displayMyName').innerText = name;
+        showScreen('screen-host-join');
+    }
+
+    // 2. HOST BUAT ROOM
+    function createRoom() {
+        const name = document.getElementById('hostRoomName').value.trim();
+        const pass = document.getElementById('hostRoomPass').value.trim();
+        if (!name || !pass) return showModal('Ups!', 'Nama room dan password wajib diisi.', 'alert');
+        
+        const roomRef = db.ref('rooms').push();
+        currentRoomId = roomRef.key;
+        myPlayerId = 'player1';
+
+        roomRef.set({
+            name: name, password: pass, status: 'waiting',
+            p1Info: myUser, p2Info: null, // Simpan profil ke firebase
+            scores: { player1: 0, player2: 0 },
+            currentRound: 1, currentTurn: 'player1', word: '', difficulty: 'easy',
+            turnCount: 0, // max 2 per ronde (p1 gambar, p2 gambar)
+            timestamp: firebase.database.ServerValue.TIMESTAMP
+        });
+
+        document.getElementById('lobbyRoomName').innerText = `Room: ${name}`;
+        document.getElementById('lobbyStatus').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Menunggu Pemain 2...';
+        document.getElementById('btnStartGame').style.display = 'none';
+        document.getElementById('difficultySelector').style.display = 'block';
+        document.getElementById('difficultyDisplay').style.display = 'none';
+
+        showScreen('screen-lobby');
+        listenToRoomLobby();
+    }
+    
+    function syncDifficulty(val) { if(myPlayerId === 'player1') db.ref(`rooms/${currentRoomId}`).update({ difficulty: val }); }
+
+    // 3. JOIN CARI ROOM
+    function loadRooms() {
+        const listDiv = document.getElementById('roomListDiv');
+        listDiv.innerHTML = '<p style="text-align:center;">Mencari room...</p>';
+        db.ref('rooms').orderByChild('status').equalTo('waiting').once('value', snapshot => {
+            listDiv.innerHTML = '';
+            if (!snapshot.exists()) return listDiv.innerHTML = '<p style="text-align:center;font-size:14px;">Tidak ada room. Buat saja!</p>';
+            
+            snapshot.forEach(child => {
+                const data = child.val();
+                if(!data.p2Info) { // Jika belum ada player2
+                    listDiv.innerHTML += `
+                        <div class="room-item">
+                            <div>
+                                <div class="room-name"><i class="fa-solid fa-gamepad"></i> ${data.name}</div>
+                                <div style="font-size:11px; color:#666;">Host: ${data.p1Info.name}</div>
+                            </div>
+                            <button class="btn-green" onclick="promptJoinRoom('${child.key}', '${data.password}', '${data.name}')">Join</button>
+                        </div>
+                    `;
+                }
+            });
+        });
+    }
+
+    let targetJoinInfo = {}; // Variabel penampung sementara
+    function promptJoinRoom(roomId, realPass, roomName) {
+        targetJoinInfo = { roomId, realPass, roomName };
+        showModal('Masukkan Password', `Room: <b>${roomName}</b>`, 'prompt', 'processJoinRoom');
+    }
+
+    function processJoinRoom() {
+        const inputPass = document.getElementById('modalInput').value.trim();
+        closeModal();
+        if (inputPass === targetJoinInfo.realPass) {
+            currentRoomId = targetJoinInfo.roomId; 
+            myPlayerId = 'player2';
+            
+            // Simpan profil player 2 ke DB
+            db.ref(`rooms/${currentRoomId}`).update({ p2Info: myUser });
+
+            document.getElementById('lobbyRoomName').innerText = `Room: ${targetJoinInfo.roomName}`;
+            document.getElementById('lobbyStatus').innerHTML = '<i class="fa-solid fa-check" style="color:green;"></i> Berhasil masuk! Menunggu Host...';
+            document.getElementById('btnStartGame').style.display = 'none';
+            document.getElementById('difficultySelector').style.display = 'none';
+            document.getElementById('difficultyDisplay').style.display = 'block';
+
+            showScreen('screen-lobby');
+            listenToRoomLobby();
+        } else {
+            showModal('Gagal', 'Password salah, coba lagi.', 'alert');
+        }
+    }
+
+    // 4. LOBBY & MULAI GAME
+    function listenToRoomLobby() {
+        if(roomListener) db.ref(`rooms/${currentRoomId}`).off('value', roomListener);
+        roomListener = db.ref(`rooms/${currentRoomId}`).on('value', snapshot => {
+            const data = snapshot.val();
+            if (!data) return forceLeaveRoom("Host telah menutup Room.");
+
+            if(myPlayerId === 'player2' && data.difficulty) document.getElementById('displayDiffVal').innerText = data.difficulty.toUpperCase();
+
+            // Jika P1 dan P2 masuk
+            if (myPlayerId === 'player1' && data.p2Info && data.status === 'waiting') {
+                document.getElementById('lobbyStatus').innerHTML = `
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <img src="${data.p2Info.avatar}" width="30" height="30" style="border-radius:50%">
+                        <b>${data.p2Info.name}</b> bergabung!
+                    </div>`;
+                document.getElementById('btnStartGame').style.display = 'block';
+            }
+
+            if (data.status === 'playing') {
+                db.ref(`rooms/${currentRoomId}`).off('value', roomListener);
+                masukKeGame(data);
+            }
+        });
+    }
+
+    function startGame() {
+        const diff = document.getElementById('roomDifficulty').value;
+        db.ref(`rooms/${currentRoomId}`).update({ status: 'playing', word: getRandomWord(diff) });
+    }
+
+    function leaveRoomConfirm() { showModal('Konfirmasi', 'Yakin ingin keluar dan menghentikan mabar?', 'confirm', 'leaveRoomData'); }
+
+    function leaveRoomData() {
+        if (currentRoomId) {
+            if (myPlayerId === 'player1') db.ref(`rooms/${currentRoomId}`).remove();
+            else db.ref(`rooms/${currentRoomId}`).update({ p2Info: null });
+        }
+        window.location.reload();
+    }
+
+    function forceLeaveRoom(msg) { showModal('Room Ditutup', msg, 'alert'); setTimeout(() => window.location.reload(), 2000); }
+
+    // 5. LOGIKA GAME & SCOREBOARD
+    function masukKeGame(data) {
+        showScreen('screen-game');
+        document.getElementById('chatBox').innerHTML = '';
+        updateScoreBoard(data);
+        setupGiliran(data.currentTurn, data.word);
+        listenToGameSync();
+    }
+
+    function updateScoreBoard(data) {
+        if(!data || !data.p1Info || !data.p2Info) return;
+        document.getElementById('sb-p1-img').src = data.p1Info.avatar;
+        document.getElementById('sb-p1-name').innerText = data.p1Info.name;
+        document.getElementById('sb-p1-score').innerText = `${data.scores.player1} Pts`;
+        
+        document.getElementById('sb-p2-img').src = data.p2Info.avatar;
+        document.getElementById('sb-p2-name').innerText = data.p2Info.name;
+        document.getElementById('sb-p2-score').innerText = `${data.scores.player2} Pts`;
+
+        document.getElementById('sb-round').innerText = `${data.currentRound} / ${maxRounds}`;
+    }
+
+    function setupGiliran(currentTurn, word) {
+        if (currentTurn === myPlayerId) {
+            myRole = 'drawer';
+            document.getElementById('role-badge').className = 'role-badge role-drawer';
+            document.getElementById('role-badge').innerHTML = '<i class="fa-solid fa-pencil"></i> Kamu Menggambar';
+            document.getElementById('input-guess-area').style.display = 'none';
+            document.getElementById('word-display').style.display = 'block';
+            document.getElementById('word-display').innerText = "Gambar: " + word.toUpperCase();
+            document.getElementById('btnClear').style.display = 'block';
+        } else {
+            myRole = 'guesser';
+            document.getElementById('role-badge').className = 'role-badge role-guesser';
+            document.getElementById('role-badge').innerHTML = '<i class="fa-solid fa-lightbulb"></i> Kamu Menebak';
+            document.getElementById('input-guess-area').style.display = 'flex';
+            document.getElementById('word-display').style.display = 'none';
+            document.getElementById('btnClear').style.display = 'none';
+        }
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        gameActive = true;
+    }
+
+    function listenToGameSync() {
+        const roomRef = db.ref(`rooms/${currentRoomId}`);
+
+        roomRef.on('value', snap => {
+            const data = snap.val();
+            if(!data) return forceLeaveRoom("Temanmu telah keluar dari game.");
+            
+            updateScoreBoard(data);
+
+            if(data.status === 'gameover') return processGameOver(data);
+
+            const expectedRole = (data.currentTurn === myPlayerId) ? 'drawer' : 'guesser';
+            if(expectedRole !== myRole && data.word) {
+                 setupGiliran(data.currentTurn, data.word);
+            }
+        });
+
+        roomRef.child('drawing').on('child_added', snap => {
+            if (myRole === 'guesser') {
+                let pos = snap.val();
+                if (pos.type === 'start') { ctx.beginPath(); ctx.moveTo(pos.x, pos.y); } 
+                else if (pos.type === 'draw') { ctx.lineTo(pos.x, pos.y); ctx.stroke(); }
+            }
+        });
+
+        roomRef.child('chats').on('child_added', snap => {
+            let chat = snap.val();
+            let div = document.createElement('div'); div.className = 'chat-msg';
+            
+            if (chat.isSystem) {
+                div.innerHTML = `<div class="sys-msg">${chat.text}</div>`;
+            } else if (chat.isCorrect) {
+                div.innerHTML = `<img src="${chat.avatar}"> <b>${chat.sender}:</b> <span style="color:var(--secondary); font-weight:bold;">BENAR! (+10 Pts) 🎉</span>`;
+                if(myRole === 'drawer') gameActive = false; // Drawer stop gambar
+            } else {
+                div.innerHTML = `<img src="${chat.avatar}"> <b>${chat.sender}:</b> ${chat.text}`;
+            }
+            const cb = document.getElementById('chatBox');
+            cb.appendChild(div); cb.scrollTop = cb.scrollHeight;
+        });
+
+        roomRef.child('clear').on('value', snap => {
+            if(snap.val()) { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.beginPath(); }
+        });
+    }
+
+    function kirimTebakan() {
+        if(!gameActive || myRole !== 'guesser') return;
+        const guess = document.getElementById('guessInput').value.trim().toLowerCase();
+        if(!guess) return;
+        document.getElementById('guessInput').value = '';
+
+        db.ref(`rooms/${currentRoomId}`).once('value', snap => {
+            const data = snap.val();
+            const isCorrect = (guess === data.word.toLowerCase());
+            
+            // Push ke chat
+            db.ref(`rooms/${currentRoomId}/chats`).push({
+                sender: myUser.name, avatar: myUser.avatar, text: guess, isCorrect: isCorrect
+            });
+
+            if(isCorrect) {
+                gameActive = false; // Kunci input sementara
+                
+                // Kalkulasi Score & Turn di DB (Karena penebak berhasil)
+                let newScore = data.scores[myPlayerId] + 10;
+                let newTurnCount = data.turnCount + 1;
+                
+                let nextTurn = (myPlayerId === 'player1') ? 'player2' : 'player1';
+                let nextRound = data.currentRound;
+                
+                // Cek jika 1 ronde full (2 giliran) selesai
+                if(newTurnCount >= 2) {
+                    newTurnCount = 0;
+                    nextRound += 1;
+                }
+
+                // Cek apakah game berakhir (Max Ronde Tercapai)
+                if(nextRound > maxRounds) {
+                     db.ref(`rooms/${currentRoomId}`).update({
+                        [`scores/${myPlayerId}`]: newScore,
+                        status: 'gameover'
+                     });
+                     return;
+                }
+
+                // Jika belum selesai, Lanjut Giliran / Ronde Berikutnya
+                setTimeout(() => {
+                    db.ref(`rooms/${currentRoomId}`).update({
+                        [`scores/${myPlayerId}`]: newScore,
+                        currentTurn: nextTurn,
+                        currentRound: nextRound,
+                        turnCount: newTurnCount,
+                        word: getRandomWord(data.difficulty || 'easy')
+                    });
+                    db.ref(`rooms/${currentRoomId}/drawing`).remove();
+                    db.ref(`rooms/${currentRoomId}/chats`).push({ isSystem: true, text: `🔄 Ronde ${nextRound} | Giliran ${nextTurn==='player1'? data.p1Info.name : data.p2Info.name}!` });
+                }, 3000); 
+            }
+        });
+    }
+
+    function processGameOver(data) {
+        let score1 = data.scores.player1;
+        let score2 = data.scores.player2;
+        let msg = '';
+        let winnerIcon = '<i class="fa-solid fa-trophy" style="color:gold; font-size:40px; display:block; margin-bottom:10px;"></i>';
+
+        if(score1 > score2) msg = `<b>${data.p1Info.name}</b> Menang!<br>Skor: ${score1} vs ${score2}`;
+        else if(score2 > score1) msg = `<b>${data.p2Info.name}</b> Menang!<br>Skor: ${score2} vs ${score1}`;
+        else msg = `Game Seri!<br>Skor seimbang: ${score1}`;
+
+        showModal('GAME OVER!', winnerIcon + msg, 'alert');
+        
+        // Host yang membersihkan DB setelah 5 detik agar gak nyangkut
+        if(myPlayerId === 'player1') {
+            setTimeout(() => { db.ref(`rooms/${currentRoomId}`).remove(); window.location.reload(); }, 5000);
+        } else {
+            setTimeout(() => window.location.reload(), 5000);
+        }
+    }
+
+    // KONTROL CANVAS
+    function getPos(e) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        let cX = e.touches ? e.touches[0].clientX : e.clientX;
+        let cY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: (cX - rect.left) * scaleX, y: (cY - rect.top) * scaleY };
+    }
+    function pushPoint(type, x, y) { if (myRole === 'drawer' && gameActive) db.ref(`rooms/${currentRoomId}/drawing`).push({ type, x, y }); }
+    function clearCanvas() { if (myRole === 'drawer') { db.ref(`rooms/${currentRoomId}/clear`).set(Date.now()); db.ref(`rooms/${currentRoomId}/drawing`).remove(); } }
+
+    canvas.addEventListener('mousedown', e => { if(myRole !== 'drawer' || !gameActive) return; isDrawing = true; let p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); pushPoint('start', p.x, p.y); });
+    canvas.addEventListener('mousemove', e => { if(!isDrawing || myRole !== 'drawer' || !gameActive) return; let p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); pushPoint('draw', p.x, p.y); });
+    canvas.addEventListener('mouseup', () => isDrawing = false);
+    canvas.addEventListener('mouseout', () => isDrawing = false);
+
+    canvas.addEventListener('touchstart', e => { if(myRole !== 'drawer' || !gameActive) return; e.preventDefault(); isDrawing = true; let p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); pushPoint('start', p.x, p.y); }, {passive:false});
+    canvas.addEventListener('touchmove', e => { if(!isDrawing || myRole !== 'drawer' || !gameActive) return; e.preventDefault(); let p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); pushPoint('draw', p.x, p.y); }, {passive:false});
+    canvas.addEventListener('touchend', () => isDrawing = false);
+
+    function getRandomWord(difficulty) {
+        const list = daftarKata[difficulty] || daftarKata['easy'];
+        return list[Math.floor(Math.random() * list.length)];
+    }
+</script>
+
+</body>
+</html>
